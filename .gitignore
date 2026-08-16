@@ -1,0 +1,9 @@
+# student data — never commit real data (names, phone numbers)
+data/store.json
+
+# local dev tools & runtime state (machine-specific, regenerable)
+.tools/
+scripts/cloudflared.exe
+scripts/*.log
+scripts/server.pid
+scripts/server.mode
