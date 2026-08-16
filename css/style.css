@@ -67,9 +67,29 @@ body {
 .app-header h1 { font-size: 18px; margin: 0; }
 .header-actions { display: flex; gap: 8px; }
 
+.semester-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--page-plane);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.semester-bar select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
 .class-tabs, .subtab-nav {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
   padding: 10px 24px 0;
   background: var(--surface-1);
@@ -91,6 +111,7 @@ body {
   color: #fff;
   border-color: var(--series-1);
 }
+.tab-btn-add { color: var(--text-muted); font-size: 13px; margin-left: 4px; }
 
 .content { padding: 20px 24px 48px; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 

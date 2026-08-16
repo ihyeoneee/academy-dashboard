@@ -68,14 +68,16 @@ while ($true) {
       $res.OutputStream.Write($ok, 0, $ok.Length)
     }
     elseif ($path -eq "/api/upload" -and $req.HttpMethod -eq "POST") {
+      $semesterId = Get-QueryParam $req.Url "semesterId"
       $classId = Get-QueryParam $req.Url "classId"
       $materialId = Get-QueryParam $req.Url "materialId"
       $filename = Get-QueryParam $req.Url "filename"
-      if ($classId -notmatch '^c[1-7]$' -or $materialId -notmatch '^[a-z0-9]+$' -or -not $filename) {
+      $idPattern = '^[a-z0-9]+$'
+      if ($semesterId -notmatch $idPattern -or $classId -notmatch $idPattern -or $materialId -notmatch $idPattern -or -not $filename) {
         $res.StatusCode = 400
       } else {
         $safeName = [System.IO.Path]::GetFileName($filename) -replace '[\\/:*?"<>|]', '_'
-        $destDir = Join-Path $uploadsDir "$classId\$materialId"
+        $destDir = Join-Path $uploadsDir "$semesterId\$classId\$materialId"
         New-Item -ItemType Directory -Force -Path $destDir | Out-Null
         $destFile = Join-Path $destDir $safeName
         $fs = [System.IO.File]::Create($destFile)
@@ -90,10 +92,12 @@ while ($true) {
       }
     }
     elseif ($path -eq "/api/upload" -and $req.HttpMethod -eq "DELETE") {
+      $semesterId = Get-QueryParam $req.Url "semesterId"
       $classId = Get-QueryParam $req.Url "classId"
       $materialId = Get-QueryParam $req.Url "materialId"
-      if ($classId -match '^c[1-7]$' -and $materialId -match '^[a-z0-9]+$') {
-        $target = Join-Path $uploadsDir "$classId\$materialId"
+      $idPattern = '^[a-z0-9]+$'
+      if ($semesterId -match $idPattern -and $classId -match $idPattern -and $materialId -match $idPattern) {
+        $target = Join-Path $uploadsDir "$semesterId\$classId\$materialId"
         Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue
       }
       $res.StatusCode = 200

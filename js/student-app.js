@@ -2,30 +2,36 @@
    student-app.js — read-only per-student view.
    Access is by unguessable link (?id=<studentId>), no login.
    Shows only that one student's own records — never the roster,
-   phone numbers, or other students' data.
+   phone numbers, other students' data, or the instructor's
+   private 상담메모 notes.
+
+   Polls the server every 20s and re-renders so edits the
+   instructor makes show up here without the student needing to
+   manually refresh (instructor + student pages stay in sync).
    ============================================================ */
+
+const REFRESH_INTERVAL_MS = 20000;
 
 document.addEventListener("DOMContentLoaded", async () => {
   await Store.ready;
+  renderFromStudentId();
 
+  document.addEventListener("store:refreshed", renderFromStudentId);
+  setInterval(() => Store.refresh(), REFRESH_INTERVAL_MS);
+});
+
+function renderFromStudentId() {
   const studentId = new URLSearchParams(location.search).get("id");
-  const found = findStudent(studentId);
+  const found = Store.findStudentGlobally(studentId);
 
   if (!found) {
     renderNotFound();
     return;
   }
 
-  renderStudentView(found.classInfo, found.student);
-});
-
-function findStudent(studentId) {
-  if (!studentId) return null;
-  for (const classInfo of Store.all.classes) {
-    const student = Store.students(classInfo.id).find((s) => s.id === studentId);
-    if (student) return { classInfo, student };
-  }
-  return null;
+  const scrollY = window.scrollY;
+  renderStudentView(found.semester, found.classInfo, found.student);
+  window.scrollTo(0, scrollY);
 }
 
 function renderNotFound() {
@@ -37,22 +43,25 @@ function renderNotFound() {
   );
 }
 
-function renderStudentView(classInfo, student) {
-  document.getElementById("student-title").textContent = `${student.name || "학생"} 님의 학습 현황 (${classInfo.name})`;
+function renderStudentView(semester, classInfo, student) {
+  document.getElementById("student-title").textContent = `${student.name || "학생"} 님의 학습 현황 (${semester.name} · ${classInfo.name})`;
+
+  const semesterId = semester.id;
+  const classId = classInfo.id;
 
   const root = document.getElementById("content");
   root.innerHTML = "";
-  root.appendChild(renderAnnouncementsPanel(classInfo.id));
-  root.appendChild(renderMaterialsPanel(classInfo.id));
-  root.appendChild(renderAttendancePanel(classInfo.id, student.id));
-  root.appendChild(renderHomeworkPanel(classInfo.id, student.id));
-  root.appendChild(renderGradesPanel(classInfo, student));
+  root.appendChild(renderAnnouncementsPanel(semesterId, classId));
+  root.appendChild(renderMaterialsPanel(semesterId, classId));
+  root.appendChild(renderAttendancePanel(semesterId, classId, student.id));
+  root.appendChild(renderHomeworkPanel(semesterId, classId, student.id));
+  root.appendChild(renderGradesPanel(semesterId, classId, student));
 }
 
 /* ---------------- 공지사항 ---------------- */
 
-function renderAnnouncementsPanel(classId) {
-  const items = [...Store.announcements(classId)].sort((a, b) => (a.date < b.date ? 1 : -1));
+function renderAnnouncementsPanel(semesterId, classId) {
+  const items = [...Store.announcements(semesterId, classId)].sort((a, b) => (a.date < b.date ? 1 : -1));
   const panel = el(`<section class="panel">
     <div class="panel-header"><h2>공지사항</h2></div>
     ${
@@ -78,8 +87,8 @@ function renderAnnouncementsPanel(classId) {
 
 /* ---------------- 과제자료실 ---------------- */
 
-function renderMaterialsPanel(classId) {
-  const items = [...Store.materials(classId)].sort((a, b) => (a.date < b.date ? 1 : -1));
+function renderMaterialsPanel(semesterId, classId) {
+  const items = [...Store.materials(semesterId, classId)].sort((a, b) => (a.date < b.date ? 1 : -1));
   const panel = el(`<section class="panel">
     <div class="panel-header"><h2>과제자료실</h2></div>
     ${
@@ -88,7 +97,7 @@ function renderMaterialsPanel(classId) {
         : `<div class="stacked-list">
             ${items
               .map((m) => {
-                const href = `/data/uploads/${classId}/${m.id}/${encodeURIComponent(m.fileName)}`;
+                const href = `/data/uploads/${semesterId}/${classId}/${m.id}/${encodeURIComponent(m.fileName)}`;
                 return `<div class="stacked-item">
                   <div class="stacked-item-header">
                     <span class="stacked-item-title">${escapeHtml(m.title)}</span>
@@ -106,8 +115,8 @@ function renderMaterialsPanel(classId) {
 
 /* ---------------- 출결 ---------------- */
 
-function renderAttendancePanel(classId, studentId) {
-  const mine = Store.attendance(classId)
+function renderAttendancePanel(semesterId, classId, studentId) {
+  const mine = Store.attendance(semesterId, classId)
     .filter((r) => r.studentId === studentId)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 
@@ -151,8 +160,8 @@ function renderAttendancePanel(classId, studentId) {
 
 /* ---------------- 숙제 ---------------- */
 
-function renderHomeworkPanel(classId, studentId) {
-  const mine = Store.homework(classId)
+function renderHomeworkPanel(semesterId, classId, studentId) {
+  const mine = Store.homework(semesterId, classId)
     .filter((r) => r.studentId === studentId)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 
@@ -184,9 +193,8 @@ function renderHomeworkPanel(classId, studentId) {
 
 /* ---------------- 성적 ---------------- */
 
-function renderGradesPanel(classInfo, student) {
-  const classId = classInfo.id;
-  const allGrades = Store.grades(classId);
+function renderGradesPanel(semesterId, classId, student) {
+  const allGrades = Store.grades(semesterId, classId);
   const mine = allGrades.filter((g) => g.studentId === student.id);
   const subjects = Array.from(new Set(mine.map((g) => g.subject).filter(Boolean))).sort();
 

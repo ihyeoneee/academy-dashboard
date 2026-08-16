@@ -3,7 +3,8 @@
    ============================================================ */
 
 const state = {
-  classId: "c1",
+  semesterId: null,
+  classId: null,
   tab: "roster",
 };
 
@@ -13,10 +14,17 @@ const TABS = [
   { id: "homework", label: "숙제현황" },
   { id: "materials", label: "공지·과제자료" },
   { id: "grades", label: "성적추이" },
+  { id: "notes", label: "상담메모(비공개)" },
   { id: "import", label: "데이터 가져오기" },
 ];
 
 function init() {
+  const semesters = Store.semesters();
+  state.semesterId = semesters[0]?.id || null;
+  const classes = state.semesterId ? Store.classes(state.semesterId) : [];
+  state.classId = classes[0]?.id || null;
+
+  renderSemesterBar();
   renderClassTabs();
   renderSubTabs();
   renderContent();
@@ -35,11 +43,77 @@ function wireSaveStatus() {
   });
 }
 
+/* ---------------- 학기 ---------------- */
+
+function renderSemesterBar() {
+  const bar = document.getElementById("semester-bar");
+  bar.innerHTML = "";
+  const semesters = Store.semesters();
+
+  const select = el(`<select id="semester-select">
+    ${semesters.map((s) => `<option value="${s.id}" ${s.id === state.semesterId ? "selected" : ""}>${escapeHtml(s.name)}</option>`).join("")}
+  </select>`);
+  select.addEventListener("change", () => {
+    state.semesterId = select.value;
+    const classes = Store.classes(state.semesterId);
+    state.classId = classes[0]?.id || null;
+    renderClassTabs();
+    renderContent();
+  });
+
+  const addBtn = el(`<button class="btn btn-ghost" type="button">+ 학기 추가</button>`);
+  addBtn.addEventListener("click", () => {
+    const name = prompt("새 학기 이름을 입력하세요 (예: 2026년 2학기)", `${semesters.length + 1}학기`);
+    if (!name || !name.trim()) return;
+    const id = Store.addSemester(name.trim());
+    state.semesterId = id;
+    state.classId = Store.classes(id)[0]?.id || null;
+    renderSemesterBar();
+    renderClassTabs();
+    renderContent();
+  });
+
+  const renameBtn = el(`<button class="btn btn-ghost" type="button">이름변경</button>`);
+  renameBtn.addEventListener("click", () => {
+    const cur = semesters.find((s) => s.id === state.semesterId);
+    if (!cur) return;
+    const name = prompt("학기 이름을 입력하세요.", cur.name);
+    if (name && name.trim()) {
+      Store.renameSemester(cur.id, name.trim());
+      renderSemesterBar();
+    }
+  });
+
+  const delBtn = el(`<button class="btn btn-ghost btn-danger" type="button">학기 삭제</button>`);
+  delBtn.addEventListener("click", () => {
+    const cur = semesters.find((s) => s.id === state.semesterId);
+    if (!cur) return;
+    if (semesters.length <= 1) {
+      alert("마지막 남은 학기는 삭제할 수 없습니다.");
+      return;
+    }
+    if (confirm(`"${cur.name}"을(를) 삭제할까요? 이 학기의 모든 반/학생/기록이 함께 삭제됩니다. 되돌릴 수 없습니다.`)) {
+      Store.removeSemester(cur.id);
+      init();
+    }
+  });
+
+  bar.appendChild(el(`<span class="field-inline">학기</span>`));
+  bar.appendChild(select);
+  bar.appendChild(addBtn);
+  bar.appendChild(renameBtn);
+  bar.appendChild(delBtn);
+}
+
+/* ---------------- 반 ---------------- */
+
 function renderClassTabs() {
   const nav = document.getElementById("class-tabs");
   nav.innerHTML = "";
-  Store.all.classes.forEach((c) => {
-    const btn = el(`<button class="tab-btn ${c.id === state.classId ? "active" : ""}" data-class="${c.id}">${c.name}</button>`);
+  const classes = state.semesterId ? Store.classes(state.semesterId) : [];
+
+  classes.forEach((c) => {
+    const btn = el(`<button class="tab-btn ${c.id === state.classId ? "active" : ""}" data-class="${c.id}">${escapeHtml(c.name)}</button>`);
     btn.addEventListener("click", () => {
       state.classId = c.id;
       renderClassTabs();
@@ -48,12 +122,38 @@ function renderClassTabs() {
     btn.addEventListener("dblclick", () => {
       const name = prompt("반 이름을 입력하세요.", c.name);
       if (name && name.trim()) {
-        Store.renameClass(c.id, name.trim());
+        Store.renameClass(state.semesterId, c.id, name.trim());
         renderClassTabs();
       }
     });
     nav.appendChild(btn);
   });
+
+  const addBtn = el(`<button class="tab-btn tab-btn-add" type="button">+ 반 추가</button>`);
+  addBtn.addEventListener("click", () => {
+    const name = prompt("새 반 이름을 입력하세요.", `${classes.length + 1}반`);
+    if (!name || !name.trim() || !state.semesterId) return;
+    const id = Store.addClass(state.semesterId, name.trim());
+    state.classId = id;
+    renderClassTabs();
+    renderContent();
+  });
+  nav.appendChild(addBtn);
+
+  if (classes.length > 0) {
+    const delBtn = el(`<button class="tab-btn tab-btn-add btn-danger" type="button">이 반 삭제</button>`);
+    delBtn.addEventListener("click", () => {
+      const cur = classes.find((c) => c.id === state.classId);
+      if (!cur) return;
+      if (confirm(`"${cur.name}"을(를) 삭제할까요? 이 반의 학생/출결/숙제/성적 기록이 모두 삭제됩니다.`)) {
+        Store.removeClass(state.semesterId, cur.id);
+        state.classId = Store.classes(state.semesterId)[0]?.id || null;
+        renderClassTabs();
+        renderContent();
+      }
+    });
+    nav.appendChild(delBtn);
+  }
 }
 
 function renderSubTabs() {
@@ -73,21 +173,32 @@ function renderSubTabs() {
 function renderContent() {
   const root = document.getElementById("content");
   root.innerHTML = "";
+
+  if (!state.semesterId) {
+    root.appendChild(el(`<section class="panel">${emptyState("학기를 먼저 추가해주세요.")}</section>`));
+    return;
+  }
+  if (!state.classId) {
+    root.appendChild(el(`<section class="panel">${emptyState("반을 먼저 추가해주세요.")}</section>`));
+    return;
+  }
+
   const renderers = {
     roster: renderRoster,
     attendance: renderAttendance,
     homework: renderHomework,
     materials: renderMaterials,
     grades: renderGrades,
+    notes: renderNotes,
     import: renderImport,
   };
-  renderers[state.tab](root, state.classId);
+  renderers[state.tab](root, state.semesterId, state.classId);
 }
 
 /* ---------------- 학생정보 (roster + contacts) ---------------- */
 
-function renderRoster(root, classId) {
-  const students = Store.students(classId);
+function renderRoster(root, semesterId, classId) {
+  const students = Store.students(semesterId, classId);
   const wrap = el(`<section class="panel">
     <div class="panel-header">
       <h2>학생명단 &amp; 연락처</h2>
@@ -107,7 +218,7 @@ function renderRoster(root, classId) {
 
   const body = wrap.querySelector("#roster-body");
   students.forEach((s) => {
-    const flags = Store.attentionFlags(classId, s.id);
+    const flags = Store.attentionFlags(semesterId, classId, s.id);
     const row = el(`<tr>
       <td>
         <input class="cell-input" data-field="name" value="${escapeAttr(s.name)}" placeholder="이름" />
@@ -129,7 +240,7 @@ function renderRoster(root, classId) {
     </tr>`);
     row.querySelectorAll("[data-field]").forEach((input) => {
       input.addEventListener("change", () => {
-        Store.updateStudent(classId, s.id, { [input.dataset.field]: input.value });
+        Store.updateStudent(semesterId, classId, s.id, { [input.dataset.field]: input.value });
       });
     });
     const studentUrl = `${location.origin}/student.html?id=${s.id}`;
@@ -148,8 +259,8 @@ function renderRoster(root, classId) {
       window.open(studentUrl, "_blank");
     });
     row.querySelector("[data-del]").addEventListener("click", () => {
-      if (confirm(`${s.name || "이 학생"}을(를) 삭제할까요? 관련 출결/숙제/성적 기록도 함께 삭제됩니다.`)) {
-        Store.removeStudent(classId, s.id);
+      if (confirm(`${s.name || "이 학생"}을(를) 삭제할까요? 관련 출결/숙제/성적/메모가 함께 삭제됩니다.`)) {
+        Store.removeStudent(semesterId, classId, s.id);
         renderContent();
       }
     });
@@ -157,16 +268,16 @@ function renderRoster(root, classId) {
   });
 
   wrap.querySelector("#add-student").addEventListener("click", () => {
-    Store.addStudent(classId, {});
+    Store.addStudent(semesterId, classId, {});
     renderContent();
   });
 }
 
 /* ---------------- 출결현황 ---------------- */
 
-function renderAttendance(root, classId) {
-  const students = Store.students(classId);
-  const records = Store.attendance(classId);
+function renderAttendance(root, semesterId, classId) {
+  const students = Store.students(semesterId, classId);
+  const records = Store.attendance(semesterId, classId);
   const wrap = el(`<section class="panel">
     <div class="panel-header">
       <h2>출결현황</h2>
@@ -211,7 +322,7 @@ function renderAttendance(root, classId) {
       ATTEND_STATUSES.forEach((st) => {
         const btn = el(`<button class="pill-btn ${statusClass(st)} ${rec && rec.status === st ? "active" : ""}">${st}</button>`);
         btn.addEventListener("click", () => {
-          Store.setAttendance(classId, s.id, date, st);
+          Store.setAttendance(semesterId, classId, s.id, date, st);
           drawDay();
           drawLog();
           drawSummary();
@@ -221,7 +332,7 @@ function renderAttendance(root, classId) {
       const noteInput = el(`<input class="cell-input" placeholder="예: 병원 방문" value="${escapeAttr(rec ? rec.note : "")}" />`);
       noteInput.addEventListener("change", () => {
         if (!rec) return; // no status set yet for this date — nothing to attach the note to
-        Store.setAttendance(classId, s.id, date, rec.status, noteInput.value);
+        Store.setAttendance(semesterId, classId, s.id, date, rec.status, noteInput.value);
         drawLog();
       });
       row.children[2].appendChild(noteInput);
@@ -272,9 +383,9 @@ function renderAttendance(root, classId) {
 
 /* ---------------- 숙제현황 ---------------- */
 
-function renderHomework(root, classId) {
-  const students = Store.students(classId);
-  const records = Store.homework(classId);
+function renderHomework(root, semesterId, classId) {
+  const students = Store.students(semesterId, classId);
+  const records = Store.homework(semesterId, classId);
   const wrap = el(`<section class="panel">
     <div class="panel-header">
       <h2>숙제현황</h2>
@@ -318,7 +429,7 @@ function renderHomework(root, classId) {
       const save = () => {
         const status = row.querySelector(".hw-status").value;
         const note = row.querySelector(".hw-note").value;
-        Store.setHomework(classId, s.id, date, status, note);
+        Store.setHomework(semesterId, classId, s.id, date, status, note);
         drawLog();
       };
       row.querySelector(".hw-status").addEventListener("change", save);
@@ -349,9 +460,9 @@ function renderHomework(root, classId) {
 
 /* ---------------- 성적추이 ---------------- */
 
-function renderGrades(root, classId) {
-  const students = Store.students(classId);
-  const grades = Store.grades(classId);
+function renderGrades(root, semesterId, classId) {
+  const students = Store.students(semesterId, classId);
+  const grades = Store.grades(semesterId, classId);
   const subjects = Array.from(new Set(grades.map((g) => g.subject).filter(Boolean))).sort();
 
   const wrap = el(`<section class="panel">
@@ -457,7 +568,7 @@ function renderGrades(root, classId) {
   wrap.querySelector("#grade-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    Store.addGrade(classId, {
+    Store.addGrade(semesterId, classId, {
       studentId: fd.get("studentId"),
       date: fd.get("date"),
       subject: fd.get("subject"),
@@ -479,7 +590,7 @@ function renderGrades(root, classId) {
         <td><button class="btn btn-ghost btn-danger" data-del>삭제</button></td>
       </tr>`);
       row.querySelector("[data-del]").addEventListener("click", () => {
-        Store.removeGrade(classId, g.id);
+        Store.removeGrade(semesterId, classId, g.id);
         renderContent();
       });
       logBody.appendChild(row);
@@ -488,9 +599,9 @@ function renderGrades(root, classId) {
 
 /* ---------------- 공지·과제자료 ---------------- */
 
-function renderMaterials(root, classId) {
-  const announcements = Store.announcements(classId);
-  const materials = Store.materials(classId);
+function renderMaterials(root, semesterId, classId) {
+  const announcements = Store.announcements(semesterId, classId);
+  const materials = Store.materials(semesterId, classId);
 
   const wrap = el(`<section class="panel">
     <div class="panel-header"><h2>공지사항</h2></div>
@@ -538,7 +649,7 @@ function renderMaterials(root, classId) {
           ${a.body ? `<div class="stacked-item-body">${escapeHtml(a.body)}</div>` : ""}
         </div>`);
         item.querySelector("[data-del]").addEventListener("click", () => {
-          Store.removeAnnouncement(classId, a.id);
+          Store.removeAnnouncement(semesterId, classId, a.id);
           renderContent();
         });
         list.appendChild(item);
@@ -555,7 +666,7 @@ function renderMaterials(root, classId) {
     [...materials]
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       .forEach((m) => {
-        const href = `/data/uploads/${classId}/${m.id}/${encodeURIComponent(m.fileName)}`;
+        const href = `/data/uploads/${semesterId}/${classId}/${m.id}/${encodeURIComponent(m.fileName)}`;
         const item = el(`<div class="stacked-item">
           <div class="stacked-item-header">
             <span class="stacked-item-title">${escapeHtml(m.title)}</span>
@@ -566,7 +677,7 @@ function renderMaterials(root, classId) {
         </div>`);
         item.querySelector("[data-del]").addEventListener("click", () => {
           if (confirm(`"${m.title}" 자료를 삭제할까요?`)) {
-            Store.removeMaterial(classId, m.id);
+            Store.removeMaterial(semesterId, classId, m.id);
             renderContent();
           }
         });
@@ -577,7 +688,7 @@ function renderMaterials(root, classId) {
   wrap.querySelector("#ann-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    Store.addAnnouncement(classId, {
+    Store.addAnnouncement(semesterId, classId, {
       date: fd.get("date"),
       title: fd.get("title"),
       body: wrap.querySelector("#ann-body").value,
@@ -595,12 +706,12 @@ function renderMaterials(root, classId) {
     const progress = filesWrap.querySelector("#mat-progress");
     progress.textContent = "업로드 중...";
     const materialId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-    const params = new URLSearchParams({ classId, materialId, filename: file.name });
+    const params = new URLSearchParams({ semesterId, classId, materialId, filename: file.name });
     try {
       const res = await fetch(`/api/upload?${params}`, { method: "POST", body: file });
       if (!res.ok) throw new Error("업로드 실패");
       const info = await res.json();
-      Store.addMaterial(classId, {
+      Store.addMaterial(semesterId, classId, {
         id: materialId,
         date: fd.get("date"),
         title: fd.get("title"),
@@ -618,6 +729,67 @@ function renderMaterials(root, classId) {
   drawMaterials();
 }
 
+/* ---------------- 상담메모 (강사 전용, 학생에게 비공개) ---------------- */
+
+function renderNotes(root, semesterId, classId) {
+  const students = Store.students(semesterId, classId);
+  const wrap = el(`<section class="panel">
+    <div class="panel-header"><h2>상담메모</h2></div>
+    <p class="hint-text">이 메모는 <b>강사만 볼 수 있습니다</b> — 학생용 화면에는 절대 표시되지 않습니다. 상담 내용, 성향, 유의사항 등을 자유롭게 기록하세요.</p>
+    ${students.length === 0 ? emptyState("학생을 먼저 등록해주세요.") : ""}
+    ${students.length > 0 ? `<label class="field-inline">학생 <select id="note-student-select">${students
+      .map((s) => `<option value="${s.id}">${escapeHtml(s.name) || "(이름 없음)"}</option>`)
+      .join("")}</select></label>` : ""}
+    <form id="note-form" class="inline-form">
+      <input type="date" name="date" required value="${todayISO()}" />
+      <input type="text" name="body" placeholder="예: 이차함수 개념 이해 부족, 추가 설명 필요" required style="flex:1;min-width:220px" />
+      <button class="btn btn-primary" type="submit">기록 추가</button>
+    </form>
+    <div id="note-list" class="stacked-list"></div>
+  </section>`);
+  root.appendChild(wrap);
+
+  if (students.length === 0) return;
+
+  const select = wrap.querySelector("#note-student-select");
+  const list = wrap.querySelector("#note-list");
+
+  function draw() {
+    list.innerHTML = "";
+    const notes = [...Store.notes(semesterId, classId, select.value)].sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (notes.length === 0) {
+      list.appendChild(el(emptyState("아직 기록된 메모가 없습니다.")));
+      return;
+    }
+    notes.forEach((n) => {
+      const item = el(`<div class="stacked-item">
+        <div class="stacked-item-header">
+          <span class="stacked-item-date">${n.date}</span>
+          <button class="btn btn-ghost btn-danger" data-del>삭제</button>
+        </div>
+        <div class="stacked-item-body">${escapeHtml(n.body)}</div>
+      </div>`);
+      item.querySelector("[data-del]").addEventListener("click", () => {
+        Store.removeNote(semesterId, classId, select.value, n.id);
+        draw();
+      });
+      list.appendChild(item);
+    });
+  }
+
+  select.addEventListener("change", draw);
+  wrap.querySelector("#note-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    Store.addNote(semesterId, classId, select.value, { date: fd.get("date"), body: fd.get("body") });
+    e.target.reset();
+    wrap.querySelector('[name="date"]').value = todayISO();
+    draw();
+  });
+
+  draw();
+}
+
 /* ---------------- 데이터 가져오기 (CSV import) ---------------- */
 
 const CSV_TEMPLATES = {
@@ -627,13 +799,13 @@ const CSV_TEMPLATES = {
   grades: { headers: ["날짜", "이름", "과목", "시험명", "점수", "만점"], example: ["2026-08-16", "홍길동", "수학", "8월 모의고사", "85", "100"] },
 };
 
-function renderImport(root, classId) {
+function renderImport(root, semesterId, classId) {
   const wrap = el(`<section class="panel">
     <div class="panel-header"><h2>데이터 가져오기 (CSV)</h2></div>
     <div class="import-guide">
       <p>엑셀에서 <b>다른 이름으로 저장 → CSV UTF-8(쉼표로 분리)</b> 로 저장한 뒤 아래에 업로드하세요.
       파일의 <b>제목행(헤더)</b>으로 종류를 자동 인식합니다 (학생명단 / 출결 / 숙제 / 성적, 여러 파일 동시 선택 가능).
-      이름은 현재 <b>"${escapeHtml(Store.getClass(classId).name)}"</b> 학생명단과 일치해야 매칭됩니다.</p>
+      이름은 현재 <b>"${escapeHtml(Store.getClass(semesterId, classId).name)}"</b> 학생명단과 일치해야 매칭됩니다.</p>
       <div class="template-list" id="template-list"></div>
     </div>
     <input type="file" id="csv-input" accept=".csv" multiple />
@@ -664,7 +836,7 @@ function renderImport(root, classId) {
         combined.unknownFiles.push(file.name);
         continue;
       }
-      const result = Store.importRows(classId, rows);
+      const result = Store.importRows(semesterId, classId, rows);
       combined.students += result.students;
       combined.attendance += result.attendance;
       combined.homework += result.homework;
