@@ -42,9 +42,66 @@ function renderStudentView(classInfo, student) {
 
   const root = document.getElementById("content");
   root.innerHTML = "";
+  root.appendChild(renderAnnouncementsPanel(classInfo.id));
+  root.appendChild(renderMaterialsPanel(classInfo.id));
   root.appendChild(renderAttendancePanel(classInfo.id, student.id));
   root.appendChild(renderHomeworkPanel(classInfo.id, student.id));
   root.appendChild(renderGradesPanel(classInfo, student));
+}
+
+/* ---------------- 공지사항 ---------------- */
+
+function renderAnnouncementsPanel(classId) {
+  const items = [...Store.announcements(classId)].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const panel = el(`<section class="panel">
+    <div class="panel-header"><h2>공지사항</h2></div>
+    ${
+      items.length === 0
+        ? emptyState("등록된 공지사항이 없습니다.")
+        : `<div class="stacked-list">
+            ${items
+              .map(
+                (a) => `<div class="stacked-item">
+                  <div class="stacked-item-header">
+                    <span class="stacked-item-title">${escapeHtml(a.title)}</span>
+                    <span class="stacked-item-date">${a.date}</span>
+                  </div>
+                  ${a.body ? `<div class="stacked-item-body">${escapeHtml(a.body)}</div>` : ""}
+                </div>`
+              )
+              .join("")}
+          </div>`
+    }
+  </section>`);
+  return panel;
+}
+
+/* ---------------- 과제자료실 ---------------- */
+
+function renderMaterialsPanel(classId) {
+  const items = [...Store.materials(classId)].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const panel = el(`<section class="panel">
+    <div class="panel-header"><h2>과제자료실</h2></div>
+    ${
+      items.length === 0
+        ? emptyState("등록된 과제자료가 없습니다.")
+        : `<div class="stacked-list">
+            ${items
+              .map((m) => {
+                const href = `/data/uploads/${classId}/${m.id}/${encodeURIComponent(m.fileName)}`;
+                return `<div class="stacked-item">
+                  <div class="stacked-item-header">
+                    <span class="stacked-item-title">${escapeHtml(m.title)}</span>
+                    <span class="stacked-item-date">${m.date} · ${formatBytes(m.size)}</span>
+                    <a class="btn btn-primary" href="${href}" target="_blank" rel="noopener">다운로드</a>
+                  </div>
+                </div>`;
+              })
+              .join("")}
+          </div>`
+    }
+  </section>`);
+  return panel;
 }
 
 /* ---------------- 출결 ---------------- */
@@ -73,11 +130,16 @@ function renderAttendancePanel(classId, studentId) {
           </div>
           <div class="table-scroll">
           <table class="data-table">
-            <thead><tr><th>날짜</th><th>상태</th></tr></thead>
+            <thead><tr><th>날짜</th><th>상태</th><th>사유</th></tr></thead>
             <tbody>
               ${mine
                 .slice(0, 30)
-                .map((r) => `<tr><td>${r.date}</td><td><span class="pill ${statusClass(r.status)}">${r.status}</span></td></tr>`)
+                .map(
+                  (r) =>
+                    `<tr><td>${r.date}</td><td><span class="pill ${statusClass(r.status)}">${r.status}</span></td><td>${escapeHtml(
+                      r.note || ""
+                    )}</td></tr>`
+                )
                 .join("")}
             </tbody>
           </table>

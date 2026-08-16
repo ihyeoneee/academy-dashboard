@@ -11,6 +11,7 @@ const TABS = [
   { id: "roster", label: "학생정보" },
   { id: "attendance", label: "출결현황" },
   { id: "homework", label: "숙제현황" },
+  { id: "materials", label: "공지·과제자료" },
   { id: "grades", label: "성적추이" },
   { id: "import", label: "데이터 가져오기" },
 ];
@@ -76,6 +77,7 @@ function renderContent() {
     roster: renderRoster,
     attendance: renderAttendance,
     homework: renderHomework,
+    materials: renderMaterials,
     grades: renderGrades,
     import: renderImport,
   };
@@ -105,8 +107,12 @@ function renderRoster(root, classId) {
 
   const body = wrap.querySelector("#roster-body");
   students.forEach((s) => {
+    const flags = Store.attentionFlags(classId, s.id);
     const row = el(`<tr>
-      <td><input class="cell-input" data-field="name" value="${escapeAttr(s.name)}" placeholder="이름" /></td>
+      <td>
+        <input class="cell-input" data-field="name" value="${escapeAttr(s.name)}" placeholder="이름" />
+        ${flags.length ? `<div class="attention-flags">${flags.map((f) => `<span class="attention-badge">⚠ ${escapeHtml(f)}</span>`).join("")}</div>` : ""}
+      </td>
       <td><input class="cell-input" data-field="studentPhone" value="${escapeAttr(s.studentPhone)}" placeholder="010-0000-0000" /></td>
       <td><input class="cell-input" data-field="parentPhone" value="${escapeAttr(s.parentPhone)}" placeholder="010-0000-0000" /></td>
       <td><input class="cell-input" data-field="parentRelation" value="${escapeAttr(s.parentRelation)}" placeholder="모/부" /></td>
@@ -169,14 +175,14 @@ function renderAttendance(root, classId) {
     ${students.length === 0 ? emptyState("학생을 먼저 등록해주세요.") : ""}
     <div class="table-scroll">
     <table class="data-table">
-      <thead><tr><th>이름</th><th>상태</th></tr></thead>
+      <thead><tr><th>이름</th><th>상태</th><th style="width:24%">사유(선택)</th></tr></thead>
       <tbody id="att-body"></tbody>
     </table>
     </div>
     <h3 class="sub-heading">최근 기록</h3>
     <div class="table-scroll">
     <table class="data-table">
-      <thead><tr><th>날짜</th><th>이름</th><th>상태</th></tr></thead>
+      <thead><tr><th>날짜</th><th>이름</th><th>상태</th><th>사유</th></tr></thead>
       <tbody id="att-log"></tbody>
     </table>
     </div>
@@ -198,7 +204,9 @@ function renderAttendance(root, classId) {
     const date = dateInput.value;
     students.forEach((s) => {
       const rec = records.find((r) => r.studentId === s.id && r.date === date);
-      const row = el(`<tr><td>${escapeHtml(s.name) || "(이름 없음)"}</td><td class="status-cell"></td></tr>`);
+      const row = el(
+        `<tr><td>${escapeHtml(s.name) || "(이름 없음)"}</td><td class="status-cell"></td><td></td></tr>`
+      );
       const cell = row.querySelector(".status-cell");
       ATTEND_STATUSES.forEach((st) => {
         const btn = el(`<button class="pill-btn ${statusClass(st)} ${rec && rec.status === st ? "active" : ""}">${st}</button>`);
@@ -210,6 +218,13 @@ function renderAttendance(root, classId) {
         });
         cell.appendChild(btn);
       });
+      const noteInput = el(`<input class="cell-input" placeholder="예: 병원 방문" value="${escapeAttr(rec ? rec.note : "")}" />`);
+      noteInput.addEventListener("change", () => {
+        if (!rec) return; // no status set yet for this date — nothing to attach the note to
+        Store.setAttendance(classId, s.id, date, rec.status, noteInput.value);
+        drawLog();
+      });
+      row.children[2].appendChild(noteInput);
       body.appendChild(row);
     });
   }
@@ -224,6 +239,7 @@ function renderAttendance(root, classId) {
         el(`<tr>
           <td>${r.date}</td><td>${escapeHtml(nameOf(r.studentId))}</td>
           <td><span class="pill ${statusClass(r.status)}">${r.status}</span></td>
+          <td>${escapeHtml(r.note || "")}</td>
         </tr>`)
       );
     });
@@ -468,6 +484,138 @@ function renderGrades(root, classId) {
       });
       logBody.appendChild(row);
     });
+}
+
+/* ---------------- 공지·과제자료 ---------------- */
+
+function renderMaterials(root, classId) {
+  const announcements = Store.announcements(classId);
+  const materials = Store.materials(classId);
+
+  const wrap = el(`<section class="panel">
+    <div class="panel-header"><h2>공지사항</h2></div>
+    <form id="ann-form" class="inline-form">
+      <input type="date" name="date" required value="${todayISO()}" />
+      <input type="text" name="title" placeholder="제목 (예: 다음주 시험 안내)" required style="flex:1;min-width:160px" />
+      <button class="btn btn-primary" type="submit">등록</button>
+    </form>
+    <textarea id="ann-body" class="cell-input" placeholder="내용 (선택)" rows="2" style="width:100%;margin-top:8px;border:1px solid var(--border);border-radius:6px;padding:8px"></textarea>
+    <div id="ann-list" class="stacked-list"></div>
+  </section>`);
+
+  const filesWrap = el(`<section class="panel">
+    <div class="panel-header"><h2>과제자료실</h2></div>
+    <p class="hint-text">매주 과제 파일(PDF, 한글, 워드, 이미지 등)을 올리면 학생용 화면에서 바로 다운로드할 수 있습니다.</p>
+    <form id="mat-form" class="inline-form">
+      <input type="date" name="date" required value="${todayISO()}" />
+      <input type="text" name="title" placeholder="제목 (예: 8월 3주차 수학 과제)" required style="flex:1;min-width:160px" />
+      <input type="file" name="file" required />
+      <button class="btn btn-primary" type="submit">업로드</button>
+    </form>
+    <div id="mat-progress"></div>
+    <div id="mat-list" class="stacked-list"></div>
+  </section>`);
+
+  root.appendChild(wrap);
+  root.appendChild(filesWrap);
+
+  function drawAnnouncements() {
+    const list = wrap.querySelector("#ann-list");
+    list.innerHTML = "";
+    if (announcements.length === 0) {
+      list.appendChild(el(emptyState("등록된 공지사항이 없습니다.")));
+      return;
+    }
+    [...announcements]
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      .forEach((a) => {
+        const item = el(`<div class="stacked-item">
+          <div class="stacked-item-header">
+            <span class="stacked-item-title">${escapeHtml(a.title)}</span>
+            <span class="stacked-item-date">${a.date}</span>
+            <button class="btn btn-ghost btn-danger" data-del>삭제</button>
+          </div>
+          ${a.body ? `<div class="stacked-item-body">${escapeHtml(a.body)}</div>` : ""}
+        </div>`);
+        item.querySelector("[data-del]").addEventListener("click", () => {
+          Store.removeAnnouncement(classId, a.id);
+          renderContent();
+        });
+        list.appendChild(item);
+      });
+  }
+
+  function drawMaterials() {
+    const list = filesWrap.querySelector("#mat-list");
+    list.innerHTML = "";
+    if (materials.length === 0) {
+      list.appendChild(el(emptyState("등록된 과제자료가 없습니다.")));
+      return;
+    }
+    [...materials]
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      .forEach((m) => {
+        const href = `/data/uploads/${classId}/${m.id}/${encodeURIComponent(m.fileName)}`;
+        const item = el(`<div class="stacked-item">
+          <div class="stacked-item-header">
+            <span class="stacked-item-title">${escapeHtml(m.title)}</span>
+            <span class="stacked-item-date">${m.date} · ${formatBytes(m.size)}</span>
+            <a class="btn btn-ghost" href="${href}" target="_blank" rel="noopener">다운로드</a>
+            <button class="btn btn-ghost btn-danger" data-del>삭제</button>
+          </div>
+        </div>`);
+        item.querySelector("[data-del]").addEventListener("click", () => {
+          if (confirm(`"${m.title}" 자료를 삭제할까요?`)) {
+            Store.removeMaterial(classId, m.id);
+            renderContent();
+          }
+        });
+        list.appendChild(item);
+      });
+  }
+
+  wrap.querySelector("#ann-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    Store.addAnnouncement(classId, {
+      date: fd.get("date"),
+      title: fd.get("title"),
+      body: wrap.querySelector("#ann-body").value,
+    });
+    renderContent();
+  });
+
+  filesWrap.querySelector("#mat-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const fd = new FormData(form);
+    const file = fd.get("file");
+    if (!file || !file.name) return;
+
+    const progress = filesWrap.querySelector("#mat-progress");
+    progress.textContent = "업로드 중...";
+    const materialId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    const params = new URLSearchParams({ classId, materialId, filename: file.name });
+    try {
+      const res = await fetch(`/api/upload?${params}`, { method: "POST", body: file });
+      if (!res.ok) throw new Error("업로드 실패");
+      const info = await res.json();
+      Store.addMaterial(classId, {
+        id: materialId,
+        date: fd.get("date"),
+        title: fd.get("title"),
+        fileName: info.fileName,
+        size: info.size,
+      });
+      progress.textContent = "";
+      renderContent();
+    } catch (err) {
+      progress.textContent = "업로드에 실패했습니다. 서버(시작하기.bat)가 켜져 있는지 확인해주세요.";
+    }
+  });
+
+  drawAnnouncements();
+  drawMaterials();
 }
 
 /* ---------------- 데이터 가져오기 (CSV import) ---------------- */

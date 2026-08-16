@@ -119,6 +119,8 @@ body {
   cursor: pointer;
   background: var(--surface-1);
   color: var(--text-primary);
+  text-decoration: none;
+  display: inline-block;
 }
 .btn-primary { background: var(--series-1); color: #fff; border-color: var(--series-1); }
 .btn-ghost { background: transparent; }
@@ -205,6 +207,26 @@ body {
 .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
 .student-link-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.attention-flags { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+.attention-badge {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 12%, transparent);
+  border: 1px solid var(--status-critical);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.hint-text { font-size: 13px; color: var(--text-secondary); margin: 0 0 10px; }
+
+.stacked-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.stacked-item { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.stacked-item-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stacked-item-title { font-weight: 600; font-size: 14px; }
+.stacked-item-date { font-size: 12px; color: var(--text-muted); margin-right: auto; }
+.stacked-item-body { margin-top: 8px; font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; }
 
 .chip-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .chip {

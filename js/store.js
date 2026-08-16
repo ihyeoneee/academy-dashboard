@@ -12,14 +12,22 @@ function defaultData() {
   const attendance = {};
   const homework = {};
   const grades = {};
+  const announcements = {};
+  const materials = {};
   CLASS_IDS.forEach((id) => {
     students[id] = [];
     attendance[id] = [];
     homework[id] = [];
     grades[id] = [];
+    announcements[id] = [];
+    materials[id] = [];
   });
-  return { version: 1, classes, students, attendance, homework, grades };
+  return { version: 1, classes, students, attendance, homework, grades, announcements, materials };
 }
+
+// thresholds for the roster "주의 필요" flags
+const ATTENTION_ABSENCE_STREAK = 2;
+const ATTENTION_HOMEWORK_STREAK = 2;
 
 const Store = (() => {
   let data = defaultData();
@@ -124,16 +132,45 @@ const Store = (() => {
     attendance(classId) {
       return data.attendance[classId];
     },
-    setAttendance(classId, studentId, date, status) {
+    setAttendance(classId, studentId, date, status, note) {
       const list = data.attendance[classId];
       let row = list.find((r) => r.studentId === studentId && r.date === date);
       if (!row) {
-        row = { id: uid(), studentId, date, status };
+        row = { id: uid(), studentId, date, status, note: note || "" };
         list.push(row);
       } else {
         row.status = status;
+        if (note !== undefined) row.note = note;
       }
       save();
+    },
+
+    // trailing-streak flags so an instructor juggling 7 classes can spot
+    // students needing attention without reading every row by hand
+    attentionFlags(classId, studentId) {
+      const flags = [];
+      const mine = (list) =>
+        list
+          .filter((r) => r.studentId === studentId)
+          .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+      const att = mine(data.attendance[classId]);
+      let absentStreak = 0;
+      for (const r of att) {
+        if (r.status === "결석") absentStreak++;
+        else break;
+      }
+      if (absentStreak >= ATTENTION_ABSENCE_STREAK) flags.push(`결석 ${absentStreak}회 연속`);
+
+      const hw = mine(data.homework[classId]);
+      let missedStreak = 0;
+      for (const r of hw) {
+        if (r.status === "미완료") missedStreak++;
+        else break;
+      }
+      if (missedStreak >= ATTENTION_HOMEWORK_STREAK) flags.push(`숙제 미완료 ${missedStreak}회 연속`);
+
+      return flags;
     },
 
     homework(classId) {
@@ -164,6 +201,38 @@ const Store = (() => {
     removeGrade(classId, gradeId) {
       data.grades[classId] = data.grades[classId].filter((g) => g.id !== gradeId);
       save();
+    },
+
+    announcements(classId) {
+      return data.announcements[classId];
+    },
+    addAnnouncement(classId, announcement) {
+      const row = { id: uid(), date: todayISO(), title: "", body: "", ...announcement };
+      data.announcements[classId].push(row);
+      save();
+      return row;
+    },
+    removeAnnouncement(classId, announcementId) {
+      data.announcements[classId] = data.announcements[classId].filter((a) => a.id !== announcementId);
+      save();
+    },
+
+    materials(classId) {
+      return data.materials[classId];
+    },
+    addMaterial(classId, material) {
+      const row = { id: uid(), date: todayISO(), title: "", fileName: "", size: 0, ...material };
+      data.materials[classId].push(row);
+      save();
+      return row;
+    },
+    removeMaterial(classId, materialId) {
+      data.materials[classId] = data.materials[classId].filter((m) => m.id !== materialId);
+      save();
+      // best-effort: also delete the file on disk (server ignores if already gone)
+      fetch(`/api/upload?classId=${encodeURIComponent(classId)}&materialId=${encodeURIComponent(materialId)}`, {
+        method: "DELETE",
+      }).catch(() => {});
     },
 
     importRows(classId, rows) {
