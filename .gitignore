@@ -1,5 +1,6 @@
-# student data — never commit real data (names, phone numbers)
+# student data — never commit real data (names, phone numbers, uploaded homework files)
 data/store.json
+data/uploads/
 
 # local dev tools & runtime state (machine-specific, regenerable)
 .tools/
