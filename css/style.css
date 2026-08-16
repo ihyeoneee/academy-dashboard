@@ -92,7 +92,7 @@ body {
   border-color: var(--series-1);
 }
 
-.content { padding: 20px 24px 48px; max-width: 1100px; margin: 0 auto; }
+.content { padding: 20px 24px 48px; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
 .panel {
   background: var(--surface-1);
@@ -192,6 +192,19 @@ body {
   background: var(--surface-1);
   color: var(--text-primary);
 }
+
+.stat-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.stat-tile {
+  flex: 1 1 100px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: center;
+}
+.stat-value { font-size: 22px; font-weight: 600; }
+.stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.student-link-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .chip-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .chip {

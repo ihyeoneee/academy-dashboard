@@ -15,33 +15,6 @@ const TABS = [
   { id: "import", label: "데이터 가져오기" },
 ];
 
-const ATTEND_STATUSES = ["출석", "지각", "조퇴", "결석"];
-const HOMEWORK_STATUSES = ["완료", "부분완료", "미완료"];
-
-function statusClass(status) {
-  return (
-    {
-      출석: "pill-good",
-      완료: "pill-good",
-      지각: "pill-warning",
-      부분완료: "pill-warning",
-      조퇴: "pill-serious",
-      결석: "pill-critical",
-      미완료: "pill-critical",
-    }[status] || "pill-muted"
-  );
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function el(html) {
-  const t = document.createElement("template");
-  t.innerHTML = html.trim();
-  return t.content.firstElementChild;
-}
-
 function init() {
   renderClassTabs();
   renderSubTabs();
@@ -122,7 +95,7 @@ function renderRoster(root, classId) {
     <div class="table-scroll">
     <table class="data-table">
       <thead><tr>
-        <th>이름</th><th>학생 연락처</th><th>학부모 연락처</th><th>학부모 관계</th><th>상태</th><th></th>
+        <th>이름</th><th>학생 연락처</th><th>학부모 연락처</th><th>학부모 관계</th><th>상태</th><th>학생용 화면</th><th></th>
       </tr></thead>
       <tbody id="roster-body"></tbody>
     </table>
@@ -142,12 +115,31 @@ function renderRoster(root, classId) {
           ${["재원", "휴원", "퇴원"].map((v) => `<option value="${v}" ${s.status === v ? "selected" : ""}>${v}</option>`).join("")}
         </select>
       </td>
+      <td class="student-link-cell">
+        <button class="btn btn-ghost" data-copy-link>링크 복사</button>
+        <button class="btn btn-ghost" data-preview-link>미리보기</button>
+      </td>
       <td><button class="btn btn-ghost btn-danger" data-del>삭제</button></td>
     </tr>`);
     row.querySelectorAll("[data-field]").forEach((input) => {
       input.addEventListener("change", () => {
         Store.updateStudent(classId, s.id, { [input.dataset.field]: input.value });
       });
+    });
+    const studentUrl = `${location.origin}/student.html?id=${s.id}`;
+    const copyBtn = row.querySelector("[data-copy-link]");
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(studentUrl);
+        const original = copyBtn.textContent;
+        copyBtn.textContent = "복사됨!";
+        setTimeout(() => (copyBtn.textContent = original), 1200);
+      } catch (e) {
+        prompt("아래 주소를 복사하세요:", studentUrl);
+      }
+    });
+    row.querySelector("[data-preview-link]").addEventListener("click", () => {
+      window.open(studentUrl, "_blank");
     });
     row.querySelector("[data-del]").addEventListener("click", () => {
       if (confirm(`${s.name || "이 학생"}을(를) 삭제할까요? 관련 출결/숙제/성적 기록도 함께 삭제됩니다.`)) {
@@ -594,18 +586,6 @@ function wireHeaderActions() {
     }
     restoreInput.value = "";
   });
-}
-
-/* ---------------- helpers ---------------- */
-
-function emptyState(msg) {
-  return `<div class="empty-state">${escapeHtml(msg)}</div>`;
-}
-function escapeHtml(str) {
-  return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-function escapeAttr(str) {
-  return escapeHtml(str);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
